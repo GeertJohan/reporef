@@ -13,8 +13,9 @@ func main() {
 			log.Printf("Error %s\n", err)
 			return
 		}
+		log.Printf("%#v\n", rr)
 
-		if r.Header.Get("go-get") == "1" {
+		if r.FormValue("go-get") == "1" {
 			done, err := rr.updateRepositoryIfNeeded()
 			if err != nil {
 				log.Printf("Error: %s\n", err)
