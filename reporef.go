@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const localDataPath = "/home/geertjohan/gitrefs/"
+const localDataPath = "/opt/reporef/gitdata/"
 
 // gitProvider, used to make process exceptions per provider
 type gitProvider string
