@@ -47,6 +47,9 @@ func main() {
 
 	// serve any request in the root (serve website with meta tag for go-get, redirecting to /git/)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.RequestURI == "/" {
+			http.Redirect(w, r, "github.com/GeertJohan/reporef", 307)
+		}
 		log.Println("request on", r.RequestURI)
 		rr, err := reporefFromRequestURI(r.RequestURI)
 		if err != nil {
