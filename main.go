@@ -4,6 +4,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
 )
 
 var tmplSimplePage *template.Template
@@ -21,7 +22,7 @@ func init() {
 <html>
 	<head>
 		<meta charset="utf-8">
-		<meta name="go-import" content="localhost.com/{{.Identifier}} git http://localhost.com/git/{{.Identifier}}/.git">
+		<meta name="go-import" content="localhost.com/{{.Identifier}} git http://localhost.com/{{.Identifier}}/.git/">
 		<title>RepoRef: {{.Identifier}}</title>
 	</head>
 	<body>
@@ -37,11 +38,11 @@ func init() {
 func main() {
 
 	// serve requests for the /git dir
-	gitHttpHandler := http.StripPrefix("/git/", http.FileServer(http.Dir(localDataPath)))
-	http.HandleFunc("/git/", func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("/git/ request: %s\n", r.RequestURI)
-		gitHttpHandler.ServeHTTP(w, r)
-	})
+	gitHttpHandler := http.FileServer(http.Dir(localDataPath))
+	// http.HandleFunc("/git/", func(w http.ResponseWriter, r *http.Request) {
+	// 	log.Printf("/git/ request: %s\n", r.RequestURI)
+	// 	gitHttpHandler.ServeHTTP(w, r)
+	// })
 
 	// serve any request in the root (serve website with meta tag for go-get, redirecting to /git/)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +62,11 @@ func main() {
 			log.Println("updated!")
 		} else {
 			log.Println("not updated")
+		}
+
+		if strings.HasPrefix(r.RequestURI, "/"+rr.identifier+"/.git/") {
+			gitHttpHandler.ServeHTTP(w, r)
+			return
 		}
 
 		pageData := &dataSimplePage{
