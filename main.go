@@ -1,32 +1,76 @@
 package main
 
 import (
-	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 )
 
+var tmplSimplePage *template.Template
+
+type dataSimplePage struct {
+	Identifier       string
+	OriginalRepoPath string
+	RefType          string
+	Ref              string
+}
+
+func init() {
+	var err error
+	tmplSimplePage, err = template.New("simplePage").Parse(`
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="go-import" content="localhost.com/{{.Identifier}} git http://localhost.com/git/{{.Identifier}}/.git">
+		<title>RepoRef: {{.Identifier}}</title>
+	</head>
+	<body>
+		Thank you for using {{.OriginalRepoPath}} at {{.RefType}} '{{.Ref}}'.
+	</body>
+</html>
+`)
+	if err != nil {
+		panic(err)
+	}
+}
+
 func main() {
+
+	// serve requests for the /git dir
+	gitHttpHandler := http.StripPrefix("/git/", http.FileServer(http.Dir(localDataPath)))
+	http.HandleFunc("/git/", func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("/git/ request: %s\n", r.RequestURI)
+		gitHttpHandler.ServeHTTP(w, r)
+	})
+
+	// serve any request in the root (serve website with meta tag for go-get, redirecting to /git/)
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		log.Println("request on", r.RequestURI)
 		rr, err := reporefFromRequestURI(r.RequestURI)
 		if err != nil {
-			log.Printf("Error %s\n", err)
+			log.Printf("Error: %s\n", err)
 			return
 		}
-		log.Printf("%#v\n", rr)
 
-		if r.FormValue("go-get") == "1" {
-			done, err := rr.updateRepositoryIfNeeded()
-			if err != nil {
-				log.Printf("Error: %s\n", err)
-				return
-			}
-			if done {
-				log.Println("done!")
-			}
-		} else {
-			fmt.Fprint(w, "Thank you for requesting ")
+		done, err := rr.updateRepositoryIfNeeded()
+		if err != nil {
+			log.Printf("Error: %s\n", err)
+			return
 		}
+		if done {
+			log.Println("updated!")
+		} else {
+			log.Println("not updated")
+		}
+
+		pageData := &dataSimplePage{
+			Identifier:       rr.identifier,
+			OriginalRepoPath: rr.originalRepoPath,
+			RefType:          string(rr.refType),
+			Ref:              rr.ref,
+		}
+
+		tmplSimplePage.Execute(w, pageData)
 	})
 
 	err := http.ListenAndServe(":80", nil)
