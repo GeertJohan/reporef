@@ -26,7 +26,8 @@ func init() {
 		<title>RepoRef: {{.Identifier}}</title>
 	</head>
 	<body>
-		Thank you for using {{.OriginalRepoPath}} at {{.RefType}} '{{.Ref}}'.
+		Thank you for using {{.OriginalRepoPath}} at {{.RefType}} '{{.Ref}}'.<br/>
+		The reporef service is experimental and under heavy development. Please contribute at github.com/GeertJohan/reporef.<br/>
 	</body>
 </html>
 `)
