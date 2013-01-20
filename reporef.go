@@ -127,11 +127,21 @@ func reporefFromRequestURI(requestURI string) (*reporef, error) {
 		return nil, errorSetupFailed
 	}
 
+	// create fileserver
+	r.httpGitFileHandler = http.StripPrefix("/"+r.identifier, http.FileServer(http.Dir(gitDataPath+r.identifier+"/.git/")))
+
 	// done creating the reporef.. save it in-memory
 	reporefByIdentifier[r.identifier] = r
 
 	// Done
 	return r, nil
+}
+
+func (r *reporef) isGitHttpRequest(uri string) bool {
+	if strings.HasPrefix(uri, "/"+r.identifier+"/objects/") || strings.HasPrefix(uri, "/"+r.identifier+"/info/refs") || strings.HasPrefix(uri, "/"+r.identifier+"/HEAD") {
+		return true
+	}
+	return false
 }
 
 // Updates the repository if the ref is a branch and the updateTime was a while ago.
