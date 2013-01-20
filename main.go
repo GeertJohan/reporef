@@ -14,8 +14,12 @@ const (
 
 func main() {
 
-	// // serve requests for git repo's
-	// gitDataHandler := http.FileServer(http.Dir(gitDataPath))
+	//++ TODO: Verry important TODO!!!!
+	//Split initial setup for a repo, and /updating/ a repo.
+	// Update can fail, will just serve old data..
+	// Initial setup should NEVER! fail and will have to call cleanupGitData()
+	// This will make everything a lot nicer.
+	// Also: less logging, only log when something goes wrong...
 
 	// serve requests for /.git/ repo's
 	publicResourcesHandler := http.StripPrefix("/public/", http.FileServer(http.Dir(publicResourcesPath)))
