@@ -13,13 +13,10 @@ import (
 	"time"
 )
 
-const localGitDataPath = "/opt/reporef/gitdata/"
-
-// gitProvider, used to make process exceptions per provider
-type gitProvider string
-
 var (
-	gitProviderGithub = gitProvider("github.com")
+	errorUnknownOrUnsupportedProvider = errors.New("Unknown or unsupported git provider.")
+	errorWontUpdateCommitReporef      = errors.New("The reference is a commit, commits will not change though time so update is not required.")
+	errorSetupFailed                  = errors.New("Could not setup reporef.")
 )
 
 // refType, used to identify how to handle a reporef
@@ -32,18 +29,12 @@ var (
 	regexpCommitHash = regexp.MustCompile("^([a-f0-9]{40})$")
 )
 
-var (
-	errorUnknownOrUnsupportedProvider = errors.New("Unknown or unsupported git provider.")
-	errorWontUpdateCommitReporef      = errors.New("The reference is a commit, commits will not change though time so update is not required.")
-	errorSetupFailed                  = errors.New("Could not setup reporef.")
-)
-
 type reporef struct {
-	identifier  string      // e.g. "github.com/GeertJohan/yubigo@4e3b79592f949dd09320c611fa60732777099f87"
-	gitProvider gitProvider // e.g. gitProviderGithub
-	user        string      // e.g. "GeertJohan"
-	repo        string      // e.g. "yubigo"
-	ref         string      // e.g. "4e3b79592f949dd09320c611fa60732777099f87"
+	identifier  string       // e.g. "github.com/GeertJohan/yubigo@4e3b79592f949dd09320c611fa60732777099f87"
+	gitProvider *gitProvider // e.g. gitProviderGithub
+	user        string       // e.g. "GeertJohan"
+	repo        string       // e.g. "yubigo"
+	ref         string       // e.g. "4e3b79592f949dd09320c611fa60732777099f87"
 	refType     refType
 
 	originalRepoPath string // e.g. "github.com/GeertJohan/yubigo"
@@ -61,6 +52,7 @@ var (
 
 // Create or pick-existing reporef from requestURI (git request or url)
 func reporefFromRequestURI(requestURI string) (*reporef, error) {
+	var err error
 	r := &reporef{}
 
 	// Remove eventual slash at the beginning of the URI
@@ -75,13 +67,16 @@ func reporefFromRequestURI(requestURI string) (*reporef, error) {
 	fields := strings.Split(requestURI, "/")
 
 	// Continueing steps differ for each git provider
-	r.gitProvider = gitProvider(fields[0])
+	r.gitProvider, err = gitProviderFromHost(fields[0])
+	if err != nil {
+		return nil, errorUnknownOrUnsupportedProvider
+	}
 	switch r.gitProvider {
 	case gitProviderGithub:
 		// Most unique way to identify this reporef is to include the repoPath and the ref.
 		r.identifier = strings.Join(fields[0:3], "/")
 	default:
-		return nil, errorUnknownOrUnsupportedProvider
+		panic("Missing case for a valid git provider in switch statement.")
 	}
 
 	// See if this reporef already exists in the reporef map
@@ -100,7 +95,7 @@ func reporefFromRequestURI(requestURI string) (*reporef, error) {
 		r.user = fields[1]
 		reporefField = fields[2]
 	default:
-		panic("Missing a provider in the second switch statement.")
+		panic("Missing case for a valid git provider in switch statement.")
 	}
 
 	// Obtain ref from last field. Store in r.ref. Remove from last field.
@@ -119,7 +114,7 @@ func reporefFromRequestURI(requestURI string) (*reporef, error) {
 	}
 
 	// Thig might not work for all providers..
-	r.originalRepoPath = string(r.gitProvider) + "/" + r.user + "/" + r.repo
+	r.originalRepoPath = r.gitProvider.host + "/" + r.user + "/" + r.repo
 
 	//++ lock reporef map for write
 	//++ check again that reporef does not exists ?? race condition here....
@@ -127,7 +122,7 @@ func reporefFromRequestURI(requestURI string) (*reporef, error) {
 	fmt.Printf("%#v\n", r)
 
 	// initial updateRepository
-	err := r.updateRepository()
+	err = r.updateRepository()
 	if err != nil {
 		return nil, errorSetupFailed
 	}
@@ -160,7 +155,7 @@ func (r *reporef) updateRepository() error {
 	r.updateLock.Lock()
 	defer r.updateLock.Unlock()
 
-	dataPath := localGitDataPath + r.identifier
+	dataPath := gitDataPath + r.identifier
 
 	// Make dirs (if not exists)
 	err := os.MkdirAll(dataPath, os.ModeDir|os.ModePerm)

@@ -1,74 +1,40 @@
 package main
 
 import (
-	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"strings"
 )
 
-var (
-	tmplReporefPage *template.Template
-	tmplGoGet       *template.Template
+const (
+	gitDataPath         = "/opt/reporef/gitdata/"
+	publicResourcesPath = "./public/"
+	templatesPath       = "./templates/"
 )
-
-type dataTmplReporefPage struct {
-	Identifier       string
-	OriginalRepoPath string
-	RefType          string
-	Ref              string
-}
-
-type dataTmplGoGet struct {
-	Identifier string
-}
-
-func init() {
-	var err error
-
-	tmplGoGet, err = template.New("goGet").Parse(`
-<html>
-	<head>
-		<meta charset="utf-8">
-		<meta name="go-import" content="reporef.org/{{.Identifier}} git http://reporef.org/{{.Identifier}}/.git/">
-		<meta HTTP-EQUIV="REFRESH" content="0; url=http://reporef.org/{{.Identifier}}">
-		<title>RepoRef go-get: {{.Identifier}}</title>
-	</head>
-	<body>
-		This is the go-get page for reporef.org/{{.Identifier}}
-		You are being redirected to the human-readable page.
-	</body>
-</html>
-`)
-	if err != nil {
-		panic(err)
-	}
-
-	tmplReporefPage, err = template.New("reporefPage").Parse(`
-<html>
-	<head>
-		<meta charset="utf-8">
-		<title>RepoRef: {{.Identifier}}</title>
-	</head>
-	<body>
-		Thank you for using {{.OriginalRepoPath}} at {{.RefType}} '{{.Ref}}'.<br/>
-		The reporef service is experimental and under heavy development. Please contribute at github.com/GeertJohan/reporef.<br/>
-	</body>
-</html>
-`)
-	if err != nil {
-		panic(err)
-	}
-}
 
 func main() {
 
 	// serve requests for /.git/ repo's
-	gitHttpHandler := http.FileServer(http.Dir(localGitDataPath))
+	gitDataHandler := http.FileServer(http.Dir(gitDataPath))
+
+	// serve requests for /.git/ repo's
+	publicResourcesHandler := http.StripPrefix("/public/", http.FileServer(http.Dir(publicResourcesPath)))
+
+	indexHandler := func(w http.ResponseWriter, r *http.Request) {
+		tmplIndex.Execute(w, &dataIndex{
+			Header: &dataHeader{
+				Title: "Link to a branch/commit.",
+			},
+		})
+	}
 
 	statsHandler := func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "Not available yet.")
+		tmplStats.Execute(w, &dataStats{
+			Header: &dataHeader{
+				Title: "Statistics",
+			},
+			TotalReporefs: 42,
+		})
 	}
 
 	reporefHandler := func(w http.ResponseWriter, r *http.Request) {
@@ -89,25 +55,29 @@ func main() {
 
 		// Request is for the .git repository.
 		if strings.HasPrefix(r.RequestURI, "/"+rr.identifier+"/.git/") {
-			gitHttpHandler.ServeHTTP(w, r)
+			gitDataHandler.ServeHTTP(w, r)
 			return
 		}
 
 		// go-get page with meta tag
 		if r.FormValue("go-get") == "1" {
-			pageData := &dataTmplGoGet{rr.identifier}
+			pageData := &dataGoGet{rr.identifier}
 			tmplGoGet.Execute(w, pageData)
 			return
 		}
 
 		// Reporef page
-		pageData := &dataTmplReporefPage{
+		pageData := &dataReporef{
+			Header: &dataHeader{
+				Title: "RepoRef: " + rr.identifier,
+			},
+			Footer:           nil,
 			Identifier:       rr.identifier,
 			OriginalRepoPath: rr.originalRepoPath,
 			RefType:          string(rr.refType),
 			Ref:              rr.ref,
 		}
-		tmplReporefPage.Execute(w, pageData)
+		tmplReporef.Execute(w, pageData)
 	}
 
 	// Manual mux for all requests
@@ -118,21 +88,24 @@ func main() {
 			return
 		}
 
-		// Redirect for request on root.
+		// Index handler.
 		if r.RequestURI == "/" {
-			// There's no index or home page yet. Redirect to reporef github project.
-			http.Redirect(w, r, "https://github.com/GeertJohan/reporef", 307)
+			indexHandler(w, r)
 			return
 		}
 
 		fields := strings.SplitN(r.RequestURI[1:], "/", 2)
 		switch fields[0] {
-		case "stats":
-			statsHandler(w, r)
 		case "github.com":
 			reporefHandler(w, r)
+		case "public":
+			publicResourcesHandler.ServeHTTP(w, r)
+		case "stats":
+			statsHandler(w, r)
+		case "project":
+			http.Redirect(w, r, "https://github.com/GeertJohan/reporef", 307)
 		default:
-			http.NotFound(w, r)
+			NotFound(w, r)
 		}
 	}
 
