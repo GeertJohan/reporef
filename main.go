@@ -100,6 +100,8 @@ func main() {
 			reporefHandler(w, r)
 		case "public":
 			publicResourcesHandler.ServeHTTP(w, r)
+		case "about":
+			http.Redirect(w, r, "https://github.com/GeertJohan/reporef", 307)
 		case "stats":
 			statsHandler(w, r)
 		case "project":
