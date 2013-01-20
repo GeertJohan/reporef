@@ -232,14 +232,15 @@ func (r *reporef) updateRepository() error {
 	// Change the HEAD file to point to the version we want..
 	// branch: "ref: refs/heads/master" where master is the ref
 	// commit: ref as commit hash
-	fmt.Printf("---\nChanging HEAD and master file to point to given ref\n")
+	fmt.Printf("---\nChanging HEAD and master file to point to %s %s\n", string(r.refType), r.ref)
 
 	var commitHash string
 	switch r.refType {
 	case refTypeBranch:
-		commitHashBytes, err := ioutil.ReadFile(dataPath + "/.git/refs/heads/master")
+		commitHashBytes, err := ioutil.ReadFile(dataPath + "/.git/refs/heads/" + r.ref)
 		if err != nil {
-			fmt.Printf("Error when reading /refs/heads/master file for commit hash: %s\n", err)
+			fmt.Printf("Error when reading /refs/heads/%s file for commit hash: %s\n", r.ref, err)
+			//++ cleanup/remove reporef
 			return err
 		}
 		commitHash = string(commitHashBytes) + "\n"
@@ -253,6 +254,7 @@ func (r *reporef) updateRepository() error {
 	headFile, err := os.Create(dataPath + "/.git/HEAD")
 	if err != nil {
 		fmt.Printf("Error when creating/truncating headFile: %s\n", err)
+		//++ cleanup/remove reporef
 		return err
 	}
 	headFile.WriteString("ref: refs/heads/master\n")
@@ -260,6 +262,7 @@ func (r *reporef) updateRepository() error {
 	masterFile, err := os.Create(dataPath + "/.git/refs/heads/master")
 	if err != nil {
 		fmt.Printf("Error when creating/truncating masterFile: %s\n", err)
+		//++ cleanup/remove reporef
 		return err
 	}
 	masterFile.WriteString(commitHash)
@@ -272,6 +275,7 @@ func (r *reporef) updateRepository() error {
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
 		fmt.Printf("Output: %s\n", gitUsiOutput)
+		//++ cleanup/remove reporef
 		return err
 	}
 	fmt.Println("Done")
