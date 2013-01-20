@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const localDataPath = "/opt/reporef/gitdata/"
+const localGitDataPath = "/opt/reporef/gitdata/"
 
 // gitProvider, used to make process exceptions per provider
 type gitProvider string
@@ -160,7 +160,7 @@ func (r *reporef) updateRepository() error {
 	r.updateLock.Lock()
 	defer r.updateLock.Unlock()
 
-	dataPath := localDataPath + r.identifier
+	dataPath := localGitDataPath + r.identifier
 
 	// Make dirs (if not exists)
 	err := os.MkdirAll(dataPath, os.ModeDir|os.ModePerm)
