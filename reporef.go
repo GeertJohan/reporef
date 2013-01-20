@@ -137,6 +137,17 @@ func reporefFromRequestURI(requestURI string) (*reporef, error) {
 	return r, nil
 }
 
+func (r *reporef) gitDataPath() string {
+	return gitDataPath + r.identifier
+}
+
+func (r *reporef) cleanupGitData() {
+	errRemove := os.RemoveAll(r.gitDataPath())
+	if errRemove != nil {
+		fmt.Printf("Error cleaning up: %s\n", errRemove)
+	}
+}
+
 func (r *reporef) isGitHttpRequest(uri string) bool {
 	if strings.HasPrefix(uri, "/"+r.identifier+"/objects/") || strings.HasPrefix(uri, "/"+r.identifier+"/info/refs") || strings.HasPrefix(uri, "/"+r.identifier+"/HEAD") {
 		return true
@@ -165,18 +176,16 @@ func (r *reporef) updateRepository() error {
 	r.updateLock.Lock()
 	defer r.updateLock.Unlock()
 
-	dataPath := gitDataPath + r.identifier
-
 	// Make dirs (if not exists)
-	err := os.MkdirAll(dataPath, os.ModeDir|os.ModePerm)
+	err := os.MkdirAll(r.gitDataPath(), os.ModeDir|os.ModePerm)
 	if err != nil {
 		return err
 	}
 
-	//++ see if there is an existing git repo in the dataPath (dataPath+".git")
+	//++ see if there is an existing git repo in the r.gitDataPath() (r.gitDataPath()+".git")
 	// Try git clone
 	gitCloneCmd := exec.Command("git", "clone", "git://"+r.originalRepoPath, "./")
-	gitCloneCmd.Dir = dataPath
+	gitCloneCmd.Dir = r.gitDataPath()
 	fmt.Printf("---\nExecuting `git clone git://%s ./`\n", r.originalRepoPath)
 	gitCloneOutput, err := gitCloneCmd.CombinedOutput()
 	reporefCloneExists := strings.Contains(string(gitCloneOutput), "destination path '.' already exists and is not an empty directory")
@@ -185,10 +194,7 @@ func (r *reporef) updateRepository() error {
 		fmt.Printf("Output: %s\n", string(gitCloneOutput))
 
 		// clean up (remove repo)
-		errRemove := os.RemoveAll(dataPath)
-		if errRemove != nil {
-			fmt.Printf("Error cleaning up: %s\n", errRemove)
-		}
+		r.cleanupGitData()
 
 		return err
 	}
@@ -203,30 +209,33 @@ func (r *reporef) updateRepository() error {
 
 		// we didn't make a new clone, so we have to make a pull from the upstream repository to update.
 		gitPullCmd := exec.Command("git", "pull", "origin", r.ref)
-		gitPullCmd.Dir = dataPath
+		gitPullCmd.Dir = r.gitDataPath()
 		fmt.Printf("---\nExecuting `git pull origin %s`\n", r.ref)
 		gitPullOutput, err := gitPullCmd.CombinedOutput()
 		if err != nil {
 			fmt.Printf("Error: %s\n", err)
 			fmt.Printf("Output: %s\n", string(gitPullOutput))
+			//++ should probably not clean up but server old data (provider might be down or not reachable)
+			//++ so don't do this, right?: r.cleanupGitData()
 			return err
 		}
 		fmt.Println("Done")
-		//++ check what gitPull actually does.. (does it work?)
+		//++ check what gitPull has done (did it work?)
 	} else {
 		// do a git checkout to get the right branch or commit from local git repository.
 		gitCheckoutCmd := exec.Command("git", "checkout", "-qf", r.ref)
-		gitCheckoutCmd.Dir = dataPath
+		gitCheckoutCmd.Dir = r.gitDataPath()
 		fmt.Printf("---\nExecuting `git checkout -qf %s`\n", r.ref)
 		gitCheckoutOutput, err := gitCheckoutCmd.CombinedOutput()
 		if err != nil {
 			fmt.Printf("Error: %s\n", err)
 			fmt.Printf("Output: %s\n", string(gitCheckoutOutput))
+			// Checkout is initial, so if it fails the gitData is just no good. clean up!
+			r.cleanupGitData()
 			return err
 		}
 		fmt.Println("Done")
-		//++ check what gitCheckout actually does..
-		//++ cleanup if pathspec does not exist (ref does not exist)
+		//++ check what gitCheckout has done (did it work?)
 	}
 
 	// Change the HEAD file to point to the version we want..
@@ -237,10 +246,10 @@ func (r *reporef) updateRepository() error {
 	var commitHash string
 	switch r.refType {
 	case refTypeBranch:
-		commitHashBytes, err := ioutil.ReadFile(dataPath + "/.git/refs/heads/" + r.ref)
+		commitHashBytes, err := ioutil.ReadFile(r.gitDataPath() + "/.git/refs/heads/" + r.ref)
 		if err != nil {
 			fmt.Printf("Error when reading /refs/heads/%s file for commit hash: %s\n", r.ref, err)
-			//++ cleanup/remove reporef
+			r.cleanupGitData()
 			return err
 		}
 		commitHash = string(commitHashBytes) + "\n"
@@ -251,31 +260,31 @@ func (r *reporef) updateRepository() error {
 	}
 
 	// let HEAD file point to ref/heads/master
-	headFile, err := os.Create(dataPath + "/.git/HEAD")
+	headFile, err := os.Create(r.gitDataPath() + "/.git/HEAD")
 	if err != nil {
 		fmt.Printf("Error when creating/truncating headFile: %s\n", err)
-		//++ cleanup/remove reporef
+		r.cleanupGitData()
 		return err
 	}
 	headFile.WriteString("ref: refs/heads/master\n")
 
-	masterFile, err := os.Create(dataPath + "/.git/refs/heads/master")
+	masterFile, err := os.Create(r.gitDataPath() + "/.git/refs/heads/master")
 	if err != nil {
 		fmt.Printf("Error when creating/truncating masterFile: %s\n", err)
-		//++ cleanup/remove reporef
+		r.cleanupGitData()
 		return err
 	}
 	masterFile.WriteString(commitHash)
 	fmt.Println("Done")
 
 	gitUsiCmd := exec.Command("git", "update-server-info")
-	gitUsiCmd.Dir = dataPath
+	gitUsiCmd.Dir = r.gitDataPath()
 	fmt.Printf("---\nExecuting `git update-server-info`\n")
 	gitUsiOutput, err := gitUsiCmd.CombinedOutput()
 	if err != nil {
 		fmt.Printf("Error: %s\n", err)
 		fmt.Printf("Output: %s\n", gitUsiOutput)
-		//++ cleanup/remove reporef
+		r.cleanupGitData()
 		return err
 	}
 	fmt.Println("Done")
